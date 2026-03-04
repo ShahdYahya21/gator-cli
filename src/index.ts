@@ -1,4 +1,4 @@
-import { CommandsRegistry, registerCommands, runCommand, handlerLogin, handlerRegister,resetHandler,getUsersHandler, aggCommandHandler,addfeedCommandHandler,feedListHandler} from "./command.js"
+import { CommandsRegistry, registerCommands, runCommand, handlerLogin, handlerRegister,resetHandler,getUsersHandler, aggCommandHandler,addfeedCommandHandler,feedListHandler, followCommandHandler, followingCommandHandler , middlewareLoggedIn, unfollowCommandHandler} from "./command.js"
 
 function main() {
     const cmdReg: CommandsRegistry = {}
@@ -9,8 +9,11 @@ function main() {
     registerCommands(cmdReg, "reset", resetHandler)
     registerCommands(cmdReg, "users", getUsersHandler)
     registerCommands(cmdReg, "agg", aggCommandHandler)
-    registerCommands(cmdReg, "addfeed", addfeedCommandHandler)
+    registerCommands(cmdReg, "addfeed", middlewareLoggedIn(addfeedCommandHandler))
     registerCommands(cmdReg, "feeds", feedListHandler)
+    registerCommands(cmdReg, "follow", middlewareLoggedIn(followCommandHandler))
+    registerCommands(cmdReg, "following", middlewareLoggedIn(followingCommandHandler))
+    registerCommands(cmdReg, "unfollow", middlewareLoggedIn(unfollowCommandHandler))
 
     const args = process.argv.slice(2)
     if (args.length < 1) {

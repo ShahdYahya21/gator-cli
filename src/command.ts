@@ -1,11 +1,39 @@
 import { readConfig, setUser } from "./config.js"
 import { createUser, getUserByName, deleteAllUsers, getUsers, getUserById } from "./db/queries/user.js"; 
-import { createFeed , getFeeds } from "./db/queries/feed.js";
+import { createFeed , getFeeds , getFeedByUrl , createFeedFollow, getFeedFollowsForUser, deleteFeedFollow } from "./db/queries/feed.js";
 import { db } from "./db/index.js";
 import { fetchFeed } from "./rss.js"
 import { feeds, users } from "./db/schema";
 
 type CommandHandler = (cmdName: string, ...args: string[]) => void;
+
+type UserCommandHandler = (
+  cmdName: string,
+  user: User,
+  ...args: string[]
+) => Promise<void>;
+
+type middlewareLoggedIn = (handler: UserCommandHandler) => CommandHandler;
+
+export const middlewareLoggedIn: middlewareLoggedIn = (handler) => {
+    return async (cmdName: string, ...args: string[]) => {
+        const username = readConfig().currentUserName;
+        if (!username) {
+            console.error("No user logged in. Please login first.");
+            process.exit(1);
+        }
+
+        const user = await getUserByName(username);
+        if (!user) {
+            console.error(`Logged-in user "${username}" not found in database.`);
+            process.exit(1);
+        }
+
+        return handler(cmdName, user, ...args);
+    };
+};
+
+
 
 export type Feed = typeof feeds.$inferSelect;
 export type User = typeof users.$inferSelect;
@@ -126,14 +154,13 @@ export async function aggCommandHandler(): Promise<void> {
 
 
 
-export async function addfeedCommandHandler(cmdName: string, ...args: string[]): Promise<void> {
+export async function addfeedCommandHandler(cmdName: string,user : User, ...args: string[]): Promise<void> {
     if (args.length !== 2) {
         console.error("addfeed command requires exactly 2 arguments: name and url");
         process.exit(1);
     }
     const [name, url] = args;
     console.log(`Adding feed with name "${name}" and url "${url}"`);
-    const user = await getUserByName(readConfig().currentUserName || "");
    if (!user.id) {
        console.error("User ID is not set.");
        process.exit(1);
@@ -172,4 +199,72 @@ export async function feedListHandler() {
   }
     await db.$client.end();
 
+}
+
+
+
+
+export async function followCommandHandler(cmdName: string,user : User, ...args: string[]): Promise<void> {
+    if (args.length !== 1) {
+        console.error("follow command requires exactly 1 argument: feed url");
+        process.exit(1);
+    }       
+    const [url] = args;
+    console.log(`Following feed with url "${url}"`);
+    if (!user.id) {
+        console.error("User ID is not set.");
+        process.exit(1);
+    }
+
+   const feed = await getFeedByUrl(url);
+   if (!feed) {
+       console.error(`Feed not found for URL: ${url}`);
+       process.exit(1);
+   }
+
+   const result = await createFeedFollow(user.id, feed.id);
+   console.log(`User "${user.name}" is now following feed "${feed.name}".`);
+   await db.$client.end();
+}
+
+
+
+export async function followingCommandHandler(cmdName: string,user : User): Promise<void> {
+  if (!user.id) {
+    console.error("User ID is not set.");
+    process.exit(1);
+  }
+
+  const follows = await getFeedFollowsForUser(user.id);
+  if (follows.length === 0) {
+    console.log(`User "${user.name}" is not following any feeds.`);
+  } else {
+    console.log(`User "${user.name}" is following the following feeds:`);
+    for (const follow of follows) {
+      console.log(`- ${follow.feedName}`);
+    }
+  }
+  await db.$client.end();
+}
+
+
+export async function unfollowCommandHandler(cmdName: string, user: User, ...args: string[]): Promise<void> {
+  if (args.length !== 1) {
+    console.error("unfollow command requires exactly 1 argument: feed url");
+    process.exit(1);
+  }
+  const [url] = args;
+  console.log(`Unfollowing feed with url "${url}"`);
+  if (!user.id) {
+    console.error("User ID is not set.");
+    process.exit(1);
+  }
+
+  const result = await deleteFeedFollow(user.id, url);
+  if (result) {
+    console.log(`Successfully unfollowed feed with url "${url}"`);
+  } else {
+    console.error(`Failed to unfollow feed with url "${url}"`);
+  }
+  await db.$client.end();
 }
