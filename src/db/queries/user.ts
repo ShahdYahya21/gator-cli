@@ -24,3 +24,8 @@ export async function getUsers() {
    return result;
 }
 
+export async function getUserById(id: string) {
+  const [result] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  return result;
+}
+

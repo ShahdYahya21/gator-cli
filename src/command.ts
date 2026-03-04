@@ -1,8 +1,14 @@
 import { readConfig, setUser } from "./config.js"
-import { createUser, getUserByName, deleteAllUsers, getUsers } from "./db/queries/user.js"; 
+import { createUser, getUserByName, deleteAllUsers, getUsers, getUserById } from "./db/queries/user.js"; 
+import { createFeed , getFeeds } from "./db/queries/feed.js";
 import { db } from "./db/index.js";
+import { fetchFeed } from "./rss.js"
+import { feeds, users } from "./db/schema";
 
 type CommandHandler = (cmdName: string, ...args: string[]) => void;
+
+export type Feed = typeof feeds.$inferSelect;
+export type User = typeof users.$inferSelect;
 
 //Just updates the current user in your app’s config.
 export async function handlerLogin(cmdName: string, ...args: string[]): Promise<void> {
@@ -67,7 +73,7 @@ export async function handlerRegister(cmdName: string, ...args: string[]): Promi
 }
 
 // reset the dataset (delete all users)
-export async function resetHandler(cmdName: string, ...args: string[]): Promise<void> {
+export async function resetHandler(): Promise<void> {
   try {
     await deleteAllUsers();
     console.log("All users have been deleted.");
@@ -80,7 +86,7 @@ export async function resetHandler(cmdName: string, ...args: string[]): Promise<
 }
 
 // get all users and mention the logged in user
-export async function getUsersHandler(cmdName: string, ...args: string[]): Promise<void> {
+export async function getUsersHandler(): Promise<void> {
   try {
     const users = await getUsers();
     const currentUser = readConfig().currentUserName;
@@ -101,7 +107,69 @@ export async function getUsersHandler(cmdName: string, ...args: string[]): Promi
    await db.$client.end(); 
 }
 
+// this command fetch rss from the url "https://www.wagslane.dev/index.xml" and print the title, link, description, and publication date of each item in the feed. 
+export async function aggCommandHandler(): Promise<void> {
+    const feedurl = 'https://www.wagslane.dev/index.xml';
+    const feed = await fetchFeed(feedurl)
+    console.log("Feed title:", feed.channel.title);
+    console.log("Feed link:", feed.channel.link);
+    console.log("Feed description:", feed.channel.description);
+    console.log("Items:");
+    for (const item of feed.channel.item) {
+        console.log("- Title:", item.title);
+        console.log("  Link:", item.link);
+        console.log("  Description:", item.description);
+        console.log("  Publication Date:", item.pubDate);
+    }
+
+}
 
 
 
+export async function addfeedCommandHandler(cmdName: string, ...args: string[]): Promise<void> {
+    if (args.length !== 2) {
+        console.error("addfeed command requires exactly 2 arguments: name and url");
+        process.exit(1);
+    }
+    const [name, url] = args;
+    console.log(`Adding feed with name "${name}" and url "${url}"`);
+    const user = await getUserByName(readConfig().currentUserName || "");
+   if (!user.id) {
+       console.error("User ID is not set.");
+       process.exit(1);
+   }
 
+   const feed = await createFeed(name, url, user.id);
+   console.log("Feed created:", feed);
+   await db.$client.end();
+}
+
+
+export function printFeed(feed: Feed, user: User) {
+  console.log("Feed:");
+  console.log(`  Name: ${feed.name}`);
+  console.log(`  URL: ${feed.url}`);
+  console.log(`  Created at: ${feed.createdAt}`);
+  console.log(`  Updated at: ${feed.updatedAt}`);
+  console.log("Added by user:");
+  console.log(`  Name: ${user.name}`);
+  console.log(`  ID: ${user.id}`);
+  console.log("-----");
+}
+
+
+export async function feedListHandler() {
+  try {
+    const feeds = await getFeeds();
+    for (const feed of feeds) {
+      const user = await getUserById(feed.userId);
+      printFeed(feed, user);
+    }
+  } catch (err) {
+    console.error("Failed to list feeds.");
+    console.error(err);
+    process.exit(1);
+  }
+    await db.$client.end();
+
+}
