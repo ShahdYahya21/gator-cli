@@ -1,6 +1,7 @@
 import { readConfig, setUser } from "./config.js"
 import { createUser, getUserByName, deleteAllUsers, getUsers, getUserById } from "./db/queries/user.js"; 
 import { createFeed , getFeeds , getFeedByUrl , createFeedFollow, getFeedFollowsForUser, deleteFeedFollow } from "./db/queries/feed.js";
+import { getPostsForUser } from "./db/queries/post.js";
 import { db } from "./db/index.js";
 import { scrapeFeeds } from "./rss.js"
 import { feeds, users } from "./db/schema";
@@ -316,4 +317,43 @@ export function parseDuration(durationStr: string): number {
         default:
             throw new Error(`Unsupported time unit: "${unit}"`);
     }
+}
+
+
+
+
+
+export async function browseCommandHandler(cmdName: string, user : User, ...args: string[]) {
+  const limitArg = args[0]; 
+  const limit = limitArg ? parseInt(limitArg, 10) : 2;
+
+  if (limitArg && (isNaN(limit) || limit <= 0)) {
+    console.error(`Invalid limit: ${limitArg}`);
+    process.exit(1);
+  }
+
+  // Get the current user
+  if (!user.id) {
+    console.error("User ID is not set.");
+    process.exit(1);
+  }
+
+  // Fetch posts for this user
+  const posts = await getPostsForUser(user.id, limit);
+
+  if (posts.length === 0) {
+    console.log("No posts found for your followed feeds.");
+    process.exit(0);
+  }
+
+  console.log(`Showing latest ${posts.length} posts for ${user.name}:`);
+  for (const post of posts) {
+    console.log("--------------------------------------------------");
+    console.log(`Title: ${post.title}`);
+    console.log(`URL: ${post.url}`);
+    console.log(`Description: ${post.description || "No description"}`);
+    console.log(`Published At: ${post.publishedAt}`);
+  }
+    await db.$client.end();
+    process.exit(0);
 }
