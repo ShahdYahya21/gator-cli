@@ -1,6 +1,6 @@
 import { db } from "..";
 import { feeds, feedFollows , users } from "../schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 
 //Create a new function to create a feed.
 export async function createFeed(name: string, url: string, userId: string) {
@@ -92,6 +92,28 @@ export async function deleteFeedFollow(userId: string, feedUrl: string) {
 
 }
 
+// Updates the last_fetched_at column and also updated_at to the current timestamp
+export async function markFeedFetched(feedId: string) {
+    const now = new Date();
+    await db
+        .update(feeds)
+        .set({
+            lastFetchedAt: now,
+            updatedAt: now,
+        })
+        .where(eq(feeds.id, feedId))
+        .execute();
+}
 
+// Get the feed that was fetched the longest time ago (or never fetched). This will be used by the fetch command to determine which feed to fetch next.
+import { sql } from "drizzle-orm";
 
+export async function getNextFeedToFetch() {
+  const [feed] = await db
+    .select()
+    .from(feeds)
+    .orderBy(sql`${feeds.lastFetchedAt} ASC NULLS FIRST`)
+    .limit(1);
 
+  return feed ?? null;
+}

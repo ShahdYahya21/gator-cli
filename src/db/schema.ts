@@ -23,7 +23,8 @@ export const feeds = pgTable("feeds", {
   url: text("url").notNull().unique(),
   userId: uuid("user_id")
     .notNull()
-    .references(() => users.id, { onDelete: "cascade" })
+    .references(() => users.id, { onDelete: "cascade" }),
+  lastFetchedAt: timestamp("last_fetched_at")
 });
 
 
@@ -49,3 +50,4 @@ export const feedFollows = pgTable("feed_follows", {
 (table) => ({
   userFeedUnique: uniqueIndex("feed_follows_user_feed_unique").on(table.userId, table.feedId),
 }));
+

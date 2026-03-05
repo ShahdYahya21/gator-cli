@@ -2,7 +2,7 @@ import { readConfig, setUser } from "./config.js"
 import { createUser, getUserByName, deleteAllUsers, getUsers, getUserById } from "./db/queries/user.js"; 
 import { createFeed , getFeeds , getFeedByUrl , createFeedFollow, getFeedFollowsForUser, deleteFeedFollow } from "./db/queries/feed.js";
 import { db } from "./db/index.js";
-import { fetchFeed } from "./rss.js"
+import { scrapeFeeds } from "./rss.js"
 import { feeds, users } from "./db/schema";
 
 type CommandHandler = (cmdName: string, ...args: string[]) => void;
@@ -135,24 +135,47 @@ export async function getUsersHandler(): Promise<void> {
    await db.$client.end(); 
 }
 
-// this command fetch rss from the url "https://www.wagslane.dev/index.xml" and print the title, link, description, and publication date of each item in the feed. 
-export async function aggCommandHandler(): Promise<void> {
-    const feedurl = 'https://www.wagslane.dev/index.xml';
-    const feed = await fetchFeed(feedurl)
-    console.log("Feed title:", feed.channel.title);
-    console.log("Feed link:", feed.channel.link);
-    console.log("Feed description:", feed.channel.description);
-    console.log("Items:");
-    for (const item of feed.channel.item) {
-        console.log("- Title:", item.title);
-        console.log("  Link:", item.link);
-        console.log("  Description:", item.description);
-        console.log("  Publication Date:", item.pubDate);
+
+// Set up a loop using setInterval that Calls scrapeFeeds once immediately and then every time_between_reqs milliseconds
+export async function aggCommandHandler(cmdName: string, ...args: string[]): Promise<void> {
+    if (args.length !== 1) {
+        console.error("Usage: agg <time_between_reqs>");
+        process.exit(1);
     }
 
+    const timeBetweenReqsStr = args[0];
+    const timeBetweenReqs = parseDuration(timeBetweenReqsStr);
+
+    if (!timeBetweenReqs || timeBetweenReqs <= 0) {
+        console.error(`Invalid time format: ${timeBetweenReqsStr}`);
+        process.exit(1);
+    }
+
+    console.log(`Collecting feeds every ${timeBetweenReqsStr}`);
+
+    // Run once immediately
+    scrapeFeeds().catch((err) => {
+        console.error("Error fetching feeds:", err);
+    });
+
+    // Start repeating
+    const interval = setInterval(() => {
+        scrapeFeeds().catch((err) => {
+            console.error("Error fetching feeds:", err);
+        });
+    }, timeBetweenReqs);
+
+    // Handle Ctrl+C (SIGINT) to stop gracefully
+    await new Promise<void>((resolve) => {
+        process.on("SIGINT", async () => {
+            console.log("\nShutting down feed aggregator...");
+            clearInterval(interval);
+            resolve();
+            await db.$client.end();
+            process.exit(0);
+        });
+    });
 }
-
-
 
 export async function addfeedCommandHandler(cmdName: string,user : User, ...args: string[]): Promise<void> {
     if (args.length !== 2) {
@@ -267,4 +290,30 @@ export async function unfollowCommandHandler(cmdName: string, user: User, ...arg
     console.error(`Failed to unfollow feed with url "${url}"`);
   }
   await db.$client.end();
+}
+
+
+export function parseDuration(durationStr: string): number {
+    const regex = /^(\d+)(ms|s|m|h)$/;
+    const match = durationStr.match(regex);
+
+    if (!match) {
+        throw new Error(`Invalid duration format: "${durationStr}". Use something like 1s, 5m, 2h, or 200ms.`);
+    }
+
+    const [, numStr, unit] = match;
+    const num = parseInt(numStr, 10);
+
+    switch (unit) {
+        case "ms":
+            return num;
+        case "s":
+            return num * 1000;
+        case "m":
+            return num * 60 * 1000;
+        case "h":
+            return num * 60 * 60 * 1000;
+        default:
+            throw new Error(`Unsupported time unit: "${unit}"`);
+    }
 }

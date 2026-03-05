@@ -1,4 +1,5 @@
 import { XMLParser } from "fast-xml-parser";
+import { getNextFeedToFetch, markFeedFetched } from "./db/queries/feed";
 
 type RSSFeed = {
   channel: {
@@ -41,4 +42,22 @@ export async function fetchFeed(feedURL: string): Promise<RSSFeed> {
     .filter(Boolean) as RSSItem[];
 
   return { channel: { title, link, description, item: items } };
+}
+
+
+// Iterate over its posts/items and print their titles to the console
+export async function scrapeFeeds() {
+    const feed = await getNextFeedToFetch();
+    if (!feed) {
+        console.log("No feeds to fetch.");
+        return;
+    }
+
+    await markFeedFetched(feed.id);
+
+    const rssFeed = await fetchFeed(feed.url);
+    console.log(`Fetched ${rssFeed.channel.item.length} items from feed "${feed.name}":`);
+    for (const item of rssFeed.channel.item) {
+        console.log(`- ${item.title}`);
+    }
 }
