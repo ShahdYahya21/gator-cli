@@ -5,8 +5,8 @@
 ## Setup
 1.  **Clone the repository**  
 ```bash
-git clone <my-repo-url>
-cd <your-repo-folder>
+git clone <repo-url>
+cd <repo-folder>
 ```
 2. Install Node.js using NVM
    
